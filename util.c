@@ -20,7 +20,7 @@ struct cidr_block parse_cidr(char *cidr) {
 
   // parse subnet mask part
   // if no subnet is provided, assume /32
-  if (*cidr != '\0')
+  if (*cidr == '\0')
     masknum = 32;
   else
     masknum = atoi(cidr);
