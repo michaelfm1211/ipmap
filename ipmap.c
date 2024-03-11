@@ -1,6 +1,8 @@
+#include "util.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,11 +12,6 @@
 #define TIMEOUT_SEC 5
 
 unsigned short seqnum = 0;
-
-struct cidr_block {
-  unsigned int ipaddr;
-  unsigned int num_addrs;
-};
 
 struct __attribute__((packed)) icmp_echo {
   unsigned char type;
@@ -83,9 +80,10 @@ int try_host(int sock, unsigned int ipaddr) {
   // send the packet
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(ipaddr);
+
   if (sendto(sock, &packet, sizeof(struct icmp_echo), 0,
              (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 1) {
-    perror("sendto");
+    perror("sendto()");
     return 1;
   }
   return 0;
@@ -95,18 +93,30 @@ int try_host(int sock, unsigned int ipaddr) {
 void *send_thread(void *args) {
   struct cidr_block block;
   int sock;
+  struct pollfd pfd;
   unsigned int next_ipaddr;
+  int ready;
 
   block = *(struct cidr_block *)args;
 
+  // create the socket
   sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
   if (sock == -1) {
     perror("socket()");
     exit(1);
   }
 
+  // create the pollfd
+  pfd.fd = sock;
+  pfd.events = POLLOUT;
+
   next_ipaddr = block.ipaddr;
   while (next_ipaddr < block.ipaddr + block.num_addrs) {
+    ready = poll(&pfd, 1, -1);
+    if (ready == -1) {
+      perror("poll()");
+      return NULL;
+    }
     try_host(sock, next_ipaddr);
 
     // increment but skip over reserved blocks
@@ -137,15 +147,45 @@ void *send_thread(void *args) {
   return NULL;
 }
 
+int write_outfile(const char *filename, struct cidr_block *block,
+                  unsigned char *ip_bitarr, size_t ip_bitarr_len) {
+  FILE *out;
+
+  // output ip bitarray to the output file
+  out = fopen(filename, "w");
+  if (out == NULL) {
+    perror("fwrite");
+    return 1;
+  }
+
+  // write the magic
+  if (fwrite(MAGIC, 8, 1, out) < 1) {
+    perror("fwrite");
+    return 1;
+  }
+  // write the CIDR block
+  if (fwrite(block, sizeof(struct cidr_block), 1, out) < 1) {
+    perror("fwrite");
+    return 1;
+  }
+  // write the bitarray
+  if (fwrite(ip_bitarr, ip_bitarr_len, 1, out) < 1) {
+    perror("fwrite");
+    return 1;
+  }
+
+  fclose(out);
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   struct cidr_block block;
   pthread_t send_thrd;
-  size_t ip_bitaddr_cap;
+  size_t ip_bitarr_cap;
   unsigned char *ip_bitarr;
   unsigned int num_ips;
   int sock;
   struct timeval timeout;
-  FILE *out;
 
   // parse arguments
   if (argc != 3) {
@@ -160,10 +200,10 @@ int main(int argc, char *argv[]) {
 
   // allocate a bitarray to keep track of ip addresses
   if (block.num_addrs % 8 == 0)
-    ip_bitaddr_cap = block.num_addrs / 8;
+    ip_bitarr_cap = block.num_addrs / 8;
   else
-    ip_bitaddr_cap = block.num_addrs / 8 + 1;
-  ip_bitarr = calloc(1, ip_bitaddr_cap);
+    ip_bitarr_cap = block.num_addrs / 8 + 1;
+  ip_bitarr = calloc(1, ip_bitarr_cap);
 
   // open the socket and add a timeout
   sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
@@ -217,16 +257,8 @@ int main(int argc, char *argv[]) {
   }
   printf("%u hosts up, %u down\n", block.num_addrs - num_ips, num_ips);
 
-  // output ip bitarray to the output file
-  out = fopen(argv[2], "w");
-  if (out == NULL) {
-    perror("fwrite");
+  if (write_outfile(argv[2], &block, ip_bitarr, ip_bitarr_cap))
     return 1;
-  }
-  if (fwrite(ip_bitarr, ip_bitaddr_cap, 1, out) < 1) {
-    perror("fwrite");
-    return 1;
-  }
 
   free(ip_bitarr);
   return 0;
