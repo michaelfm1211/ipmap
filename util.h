@@ -7,3 +7,4 @@ struct cidr_block {
   unsigned int num_addrs;
 };
 
+struct cidr_block parse_cidr(char *cidr);

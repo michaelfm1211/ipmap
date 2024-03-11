@@ -21,27 +21,6 @@ struct __attribute__((packed)) icmp_echo {
   unsigned short seqnum;
 };
 
-struct cidr_block parse_cidr(char *cidr) {
-  char *ptr;
-  int i;
-  struct cidr_block block;
-
-  // parse ip address part
-  block.ipaddr = 0;
-  ptr = cidr;
-  for (i = 24; i >= 0; i -= 8) {
-    while (*ptr != '.' && *ptr != '/')
-      ptr++;
-    *ptr = '\0';
-    block.ipaddr += atoi(cidr) << i;
-    cidr = ptr + 1;
-  }
-
-  // parse subnet mask park
-  block.num_addrs = 1 << (32 - atoi(cidr));
-  return block;
-}
-
 // borrowed from http://www.ping127001.com/pingpage/ping.text
 unsigned short ip_chksum(unsigned short *w, size_t len) {
   int nleft, sum;
@@ -189,7 +168,7 @@ int main(int argc, char *argv[]) {
 
   // parse arguments
   if (argc != 3) {
-    fprintf(stderr, "%s cidr output_file\n", argv[0]);
+    fprintf(stderr, "%s cidr output-file\n", argv[0]);
     return 1;
   }
   block = parse_cidr(argv[1]);
@@ -227,6 +206,7 @@ int main(int argc, char *argv[]) {
     unsigned int ipaddr;
     char ipaddr_str[INET_ADDRSTRLEN];
     socklen_t addrlen;
+    size_t offset;
 
     addrlen = sizeof(struct sockaddr_in);
     if (recvfrom(sock, &packet, sizeof(struct icmp_echo), 0,
@@ -248,8 +228,8 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "unexpected address: %s\n", ipaddr_str);
       continue;
     }
-    ip_bitarr[(ipaddr - block.ipaddr) / 8] |= 1
-                                              << ((ipaddr - block.ipaddr) % 8);
+    offset = ipaddr - block.ipaddr;
+    ip_bitarr[offset / 8] |= 1 << (offset % 8);
     num_ips--;
 
     // logging
