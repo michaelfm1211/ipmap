@@ -1,3 +1,5 @@
+PREFIX=/usr/local
+
 CFLAGS = -Wall -Wextra -Werror -pedantic
 BINS = ipmap ipmap-query
 
@@ -16,6 +18,14 @@ ipmap-query: ipmap-query.o util.o
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $?
+
+.PHONY: install
+install: all
+	mkdir -p "${PREFIX}/bin"
+	cp ipmap "${PREFIX}/bin/ipmap"
+	chmod 755 "${PREFIX}/bin/ipmap"
+	cp ipmap-query "${PREFIX}/bin/ipmap-query"
+	chmod 755 "${PREFIX}/bin/ipmap-query"
 
 .PHONY: clean
 clean:
