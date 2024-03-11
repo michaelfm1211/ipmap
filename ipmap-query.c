@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 
     ipaddr = htonl(query.ipaddr);
     inet_ntop(AF_INET, &ipaddr, ipaddr_str, INET_ADDRSTRLEN);
-    printf("%s: %s\n", ipaddr_str, status ? "up" : "down");
+    printf("%s: %s\n", status ? "up" : "down", ipaddr_str);
 
     query.ipaddr++;
     query.num_addrs--;

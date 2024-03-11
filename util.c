@@ -24,6 +24,6 @@ struct cidr_block parse_cidr(char *cidr) {
     masknum = 32;
   else
     masknum = atoi(cidr);
-  block.num_addrs = 1 << (32 - masknum);
+  block.num_addrs = (unsigned int)1 << (32 - masknum);
   return block;
 }

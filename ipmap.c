@@ -13,6 +13,11 @@
 
 unsigned short seqnum = 0;
 
+struct sender_args {
+  int sock;
+  struct cidr_block block;
+};
+
 struct __attribute__((packed)) icmp_echo {
   unsigned char type;
   unsigned char code;
@@ -69,34 +74,27 @@ int try_host(int sock, unsigned int ipaddr) {
 }
 
 // worker thread to send ping packets to each address
-void *send_thread(void *args) {
-  struct cidr_block block;
-  int sock;
+void *send_thread(void *args_ptr) {
+  struct sender_args *args;
   struct pollfd pfd;
   unsigned int next_ipaddr;
   int ready;
+  struct timeval timeout;
 
-  block = *(struct cidr_block *)args;
-
-  // create the socket
-  sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-  if (sock == -1) {
-    perror("socket()");
-    exit(1);
-  }
+  args = (struct sender_args *)args_ptr;
 
   // create the pollfd
-  pfd.fd = sock;
+  pfd.fd = args->sock;
   pfd.events = POLLOUT;
 
-  next_ipaddr = block.ipaddr;
-  while (next_ipaddr < block.ipaddr + block.num_addrs) {
+  next_ipaddr = args->block.ipaddr;
+  while (next_ipaddr < args->block.ipaddr + args->block.num_addrs) {
     ready = poll(&pfd, 1, -1);
     if (ready == -1) {
       perror("poll()");
       return NULL;
     }
-    try_host(sock, next_ipaddr);
+    try_host(args->sock, next_ipaddr);
 
     // increment but skip over reserved blocks
     next_ipaddr++;
@@ -122,7 +120,15 @@ void *send_thread(void *args) {
     }
   }
 
-  close(sock);
+  // set a timeout on the socket now that we're done querying
+  timeout.tv_sec = TIMEOUT_SEC;
+  timeout.tv_usec = 0;
+  if (setsockopt(args->sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+                 sizeof(struct timeval)) < 0) {
+    perror("setsockopt()");
+    // no recovery here, or else we'll never end
+    exit(1);
+  }
   return NULL;
 }
 
@@ -159,12 +165,12 @@ int write_outfile(const char *filename, struct cidr_block *block,
 
 int main(int argc, char *argv[]) {
   struct cidr_block block;
+  struct sender_args thrd_args;
   pthread_t send_thrd;
   size_t ip_bitarr_cap;
   unsigned char *ip_bitarr;
   unsigned int num_ips;
   int sock;
-  struct timeval timeout;
 
   // parse arguments
   if (argc != 3) {
@@ -173,8 +179,17 @@ int main(int argc, char *argv[]) {
   }
   block = parse_cidr(argv[1]);
 
+  // open the socket
+  sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+  if (sock == -1) {
+    perror("socket()");
+    return 1;
+  }
+
   // open a thread to send ping requests while we receive them
-  if (pthread_create(&send_thrd, NULL, send_thread, &block))
+  thrd_args.block = block;
+  thrd_args.sock = sock;
+  if (pthread_create(&send_thrd, NULL, send_thread, &thrd_args))
     return 1;
 
   // allocate a bitarray to keep track of ip addresses
@@ -183,20 +198,6 @@ int main(int argc, char *argv[]) {
   else
     ip_bitarr_cap = block.num_addrs / 8 + 1;
   ip_bitarr = calloc(1, ip_bitarr_cap);
-
-  // open the socket and add a timeout
-  sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-  if (sock == -1) {
-    perror("socket()");
-    return 1;
-  }
-  timeout.tv_sec = TIMEOUT_SEC;
-  timeout.tv_usec = 0;
-  if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
-                 sizeof(struct timeval)) < 0) {
-    perror("setsockopt()");
-    return 1;
-  }
 
   // receive all
   num_ips = block.num_addrs;
