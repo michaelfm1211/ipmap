@@ -7,6 +7,16 @@ For example, to scan every host on the subnet 1.0.0.0/8 just run
 ```
 ipmap 1.0.0.0/8 results
 ```
-The resulting bit map will be written to `results`.
+The results will be written to `results`.
 
-Note: `ipmap` uses raw sockets, so you must run the command as root.
+**Note**: `ipmap` uses raw sockets, so you must run the command as root.
+
+To see results from a scan, you can use the `ipmap-query` tool. For example, to
+check the status of 1.1.1.1 from the previous scan, you can use
+```
+ipmap-query results 1.1.1.1
+```
+or, to get the statuses of the entire 1.1.1.0/24 subnet, you can use
+```
+ipmap-query results 1.1.1.0/24
+```
