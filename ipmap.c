@@ -51,6 +51,7 @@ unsigned short ip_chksum(unsigned short *w, size_t len) {
 int try_host(int sock, unsigned int ipaddr) {
   struct icmp_echo packet;
   struct sockaddr_in addr;
+  char ipaddr_str[INET_ADDRSTRLEN];
 
   // create a ping packet
   packet.type = 8;
@@ -64,6 +65,10 @@ int try_host(int sock, unsigned int ipaddr) {
   // send the packet
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(ipaddr);
+
+  // logging
+  inet_ntop(AF_INET, &addr.sin_addr.s_addr, ipaddr_str, INET_ADDRSTRLEN);
+  printf("trying %s\n", ipaddr_str);
 
   if (sendto(sock, &packet, sizeof(struct icmp_echo), 0,
              (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 1) {
@@ -88,7 +93,8 @@ void *send_thread(void *args_ptr) {
   pfd.events = POLLOUT;
 
   next_ipaddr = args->block.ipaddr;
-  while (next_ipaddr < args->block.ipaddr + args->block.num_addrs) {
+  // we need the <= and -1 or else we the integer might overflow
+  while (next_ipaddr <= args->block.ipaddr + args->block.num_addrs - 1) {
     ready = poll(&pfd, 1, -1);
     if (ready == -1) {
       perror("poll()");
@@ -116,11 +122,14 @@ void *send_thread(void *args_ptr) {
                next_ipaddr == 0xCB007100) {
       next_ipaddr += 1 << (32 - 24);
     } else if (next_ipaddr == 0xFFFFFFFF) {
-      next_ipaddr += 1;
+      // this is reserved, but don't skip this address or else we'll integer
+      // overflow
+      break;
     }
   }
 
   // set a timeout on the socket now that we're done querying
+  printf("finished sending requests\n");
   timeout.tv_sec = TIMEOUT_SEC;
   timeout.tv_usec = 0;
   if (setsockopt(args->sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
@@ -173,11 +182,16 @@ int main(int argc, char *argv[]) {
   int sock;
 
   // parse arguments
-  if (argc != 3) {
-    fprintf(stderr, "%s cidr output-file\n", argv[0]);
+  if (argc != 3 && argc != 4) {
+    fprintf(stderr, "%s [-q] cidr output-file\n", argv[0]);
     return 1;
   }
   block = parse_cidr(argv[1]);
+  if (block.ipaddr + block.num_addrs - 1 < block.ipaddr) {
+    fprintf(stderr,
+            "block subnet is too large (extends past 255.255.255.255)\n");
+    return 1;
+  }
 
   // open the socket
   sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
@@ -213,7 +227,7 @@ int main(int argc, char *argv[]) {
     if (recvfrom(sock, &packet, sizeof(struct icmp_echo), 0,
                  (struct sockaddr *)&addr, &addrlen) <= 0) {
       // timeout
-      if (errno == EWOULDBLOCK)
+      if (errno == EWOULDBLOCK || errno == EAGAIN)
         break;
       // genuine error, so print
       perror("recvfrom");
