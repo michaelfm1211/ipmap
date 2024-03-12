@@ -95,37 +95,44 @@ void *send_thread(void *args_ptr) {
   next_ipaddr = args->block.ipaddr;
   // we need the <= and -1 or else we the integer might overflow
   while (next_ipaddr <= args->block.ipaddr + args->block.num_addrs - 1) {
+    // skip over reserved IP blocks
+    if (next_ipaddr == 0xE0000000 || next_ipaddr == 0xF0000000) {
+      next_ipaddr += 1 << (32 - 4);
+      continue;
+    } else if (next_ipaddr == 0x0 || next_ipaddr == 0xA000000 ||
+               next_ipaddr == 0x7F000000) {
+      next_ipaddr += 1 << (32 - 8);
+      continue;
+    } else if (next_ipaddr == 0x64400000) {
+      next_ipaddr += 1 << (32 - 10);
+      continue;
+    } else if (next_ipaddr == 0xAC100000) {
+      next_ipaddr += 1 << (32 - 12);
+      continue;
+    } else if (next_ipaddr == 0xC6120000) {
+      next_ipaddr += 1 << (32 - 15);
+      continue;
+    } else if (next_ipaddr == 0xA9FE0000 || next_ipaddr == 0xC0A80000) {
+      next_ipaddr += 1 << (32 - 16);
+      continue;
+    } else if (next_ipaddr == 0xC0000000 || next_ipaddr == 0xC0000200 ||
+               next_ipaddr == 0xC0586300 || next_ipaddr == 0xC6336400 ||
+               next_ipaddr == 0xCB007100) {
+      next_ipaddr += 1 << (32 - 24);
+      continue;
+    } else if (next_ipaddr == 0xFFFFFFFF) {
+      // this is reserved, but don't skip this address or else we'll integer
+      // overflow. it the last possible address so just break;
+      break;
+    }
+
     ready = poll(&pfd, 1, -1);
     if (ready == -1) {
       perror("poll()");
       return NULL;
     }
     try_host(args->sock, next_ipaddr);
-
-    // increment but skip over reserved blocks
     next_ipaddr++;
-    if (next_ipaddr == 0xE0000000 || next_ipaddr == 0xF0000000) {
-      next_ipaddr += 1 << (32 - 4);
-    } else if (next_ipaddr == 0x0 || next_ipaddr == 0xA000000 ||
-               next_ipaddr == 0x7F000000) {
-      next_ipaddr += 1 << (32 - 8);
-    } else if (next_ipaddr == 0x64400000) {
-      next_ipaddr += 1 << (32 - 10);
-    } else if (next_ipaddr == 0xAC100000) {
-      next_ipaddr += 1 << (32 - 12);
-    } else if (next_ipaddr == 0xC6120000) {
-      next_ipaddr += 1 << (32 - 15);
-    } else if (next_ipaddr == 0xA9FE0000 || next_ipaddr == 0xC0A80000) {
-      next_ipaddr += 1 << (32 - 16);
-    } else if (next_ipaddr == 0xC0000000 || next_ipaddr == 0xC0000200 ||
-               next_ipaddr == 0xC0586300 || next_ipaddr == 0xC6336400 ||
-               next_ipaddr == 0xCB007100) {
-      next_ipaddr += 1 << (32 - 24);
-    } else if (next_ipaddr == 0xFFFFFFFF) {
-      // this is reserved, but don't skip this address or else we'll integer
-      // overflow
-      break;
-    }
   }
 
   // set a timeout on the socket now that we're done querying
