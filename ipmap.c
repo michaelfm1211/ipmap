@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define TIMEOUT_SEC 5
@@ -18,7 +19,8 @@ struct sender_args {
   struct cidr_block block;
 };
 
-struct __attribute__((packed)) icmp_echo {
+/* struct __attribute__((packed)) icmp_echo { */
+struct icmp_echo {
   unsigned char type;
   unsigned char code;
   unsigned short chksum;
@@ -68,7 +70,9 @@ int try_host(int sock, unsigned int ipaddr) {
 
   // logging
   inet_ntop(AF_INET, &addr.sin_addr.s_addr, ipaddr_str, INET_ADDRSTRLEN);
+#ifdef DEBUG
   printf("trying %s\n", ipaddr_str);
+#endif
 
   if (sendto(sock, &packet, sizeof(struct icmp_echo), 0,
              (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 1) {
@@ -188,9 +192,14 @@ int main(int argc, char *argv[]) {
   unsigned int num_ips;
   int sock;
 
+  // make sure no padding has been added to struct icmp_echo
+  if (sizeof(struct icmp_echo) != 8) {
+    fprintf(stderr, "struct icmp_echo is aligned. Contact the developers.\n");
+  }
+
   // parse arguments
-  if (argc != 3 && argc != 4) {
-    fprintf(stderr, "%s [-q] cidr output-file\n", argv[0]);
+  if (argc != 3) {
+    fprintf(stderr, "%s cidr output-file\n", argv[0]);
     return 1;
   }
 
@@ -246,7 +255,9 @@ int main(int argc, char *argv[]) {
       // either a host is sending us back garbage (unlikely), or this is an
       // error message from a router like TTL Exceeded (more likely). either
       // way, the host is unreachable.
-      fprintf(stderr, "unexpected address: %s\n", ipaddr_str);
+#ifdef DEBUG
+      printf("unexpected address: %s\n", ipaddr_str);
+#endif
       continue;
     }
     offset = ipaddr - block.ipaddr;
@@ -254,7 +265,9 @@ int main(int argc, char *argv[]) {
     num_ips--;
 
     // logging
+#ifdef DEBUG
     printf("up: %s\n", ipaddr_str);
+#endif
   }
   printf("%u hosts up, %u down\n", block.num_addrs - num_ips, num_ips);
 
