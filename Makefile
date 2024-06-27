@@ -7,7 +7,7 @@ all: CFLAGS += -O3
 all: $(BINS)
 
 .PHONY: debug
-debug: CFLAGS += -fsanitize=address -fsanitize=undefined -O0 -g
+debug: CFLAGS += -fsanitize=address -fsanitize=undefined -O0 -g -DDEBUG
 debug: $(BINS)
 
 ipmap: ipmap.o util.o

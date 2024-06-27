@@ -1,6 +1,5 @@
 #include "util.h"
 #include <stdlib.h>
-#include <ctype.h>
 #include <string.h>
 
 struct cidr_block parse_cidr(char *cidr) {
