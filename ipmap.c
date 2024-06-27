@@ -198,8 +198,8 @@ int main(int argc, char *argv[]) {
   }
 
   // parse arguments
-  if (argc != 3 && argc != 4) {
-    fprintf(stderr, "%s [-q] cidr output-file\n", argv[0]);
+  if (argc != 3) {
+    fprintf(stderr, "%s cidr output-file\n", argv[0]);
     return 1;
   }
   block = parse_cidr(argv[1]);
