@@ -20,3 +20,9 @@ or, to get the statuses of the entire 1.1.1.0/24 subnet, you can use
 ```
 ipmap-query results 1.1.1.0/24
 ```
+You can also visualize your scan using a
+[Hilbert curve](https://en.wikipedia.org/wiki/Hilbert_curve) and
+[Farbfeld](https://tools.suckless.org/farbfeld/) with `ipmap-viz`:
+```
+ipmap-viz results 1.0.0.0/8 | ff2png > results.png
+```

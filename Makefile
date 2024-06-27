@@ -1,7 +1,7 @@
 PREFIX=/usr/local
 
 CFLAGS = -Wall -Wextra -Werror -pedantic
-BINS = ipmap ipmap-query
+BINS = ipmap ipmap-query ipmap-viz
 
 all: CFLAGS += -O3
 all: $(BINS)
@@ -16,6 +16,9 @@ ipmap: ipmap.o util.o
 ipmap-query: ipmap-query.o util.o
 	$(CC) $(CFLAGS) $^ -o $@
 
+ipmap-viz: ipmap-viz.o util.o
+	$(CC) $(CFLAGS) $^ -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $?
 
@@ -26,6 +29,8 @@ install: all
 	chmod 755 "${PREFIX}/bin/ipmap"
 	cp ipmap-query "${PREFIX}/bin/ipmap-query"
 	chmod 755 "${PREFIX}/bin/ipmap-query"
+	cp ipmap-query "${PREFIX}/bin/ipmap-viz"
+	chmod 755 "${PREFIX}/bin/ipmap-viz"
 
 .PHONY: clean
 clean:

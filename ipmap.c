@@ -193,10 +193,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "%s [-q] cidr output-file\n", argv[0]);
     return 1;
   }
-  block = parse_cidr(argv[1]);
-  if (block.ipaddr + block.num_addrs - 1 < block.ipaddr) {
-    fprintf(stderr,
-            "block subnet is too large (extends past 255.255.255.255)\n");
+
+  if (parse_cidr(argv[1], &block)) {
+    fprintf(stderr, "invalid CIDR block\n");
     return 1;
   }
 
