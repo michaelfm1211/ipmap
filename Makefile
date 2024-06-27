@@ -29,7 +29,7 @@ install: all
 	chmod 755 "${PREFIX}/bin/ipmap"
 	cp ipmap-query "${PREFIX}/bin/ipmap-query"
 	chmod 755 "${PREFIX}/bin/ipmap-query"
-	cp ipmap-query "${PREFIX}/bin/ipmap-viz"
+	cp ipmap-viz "${PREFIX}/bin/ipmap-viz"
 	chmod 755 "${PREFIX}/bin/ipmap-viz"
 
 .PHONY: clean
