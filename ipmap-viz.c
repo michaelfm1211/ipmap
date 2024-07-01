@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
   }
 
   // write magic
-  strncpy(fb_magic, "farbfeld", 8);
+  memcpy(fb_magic, "farbfeld", 8);
   if (fwrite(fb_magic, sizeof(char), 8, stdout) != 8) {
     perror("fwrite()");
     free(ip_bitarr);
