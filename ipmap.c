@@ -11,10 +11,15 @@
 #include <unistd.h>
 
 #define TIMEOUT_SEC 5
+#define NUM_THRDS 32
 
 unsigned short seqnum = 0;
 
+pthread_mutex_t thrds_working_mutex;
+size_t thrds_working = 0;
+
 struct sender_args {
+  int id;
   int sock;
   struct cidr_block block;
 };
@@ -50,7 +55,7 @@ unsigned short ip_chksum(unsigned short *w, size_t len) {
   return ~sum;
 }
 
-int try_host(int sock, unsigned int ipaddr) {
+int try_host(__attribute__((unused)) int thrd_id, int sock, unsigned int ipaddr) {
   struct icmp_echo packet;
   struct sockaddr_in addr;
   char ipaddr_str[INET_ADDRSTRLEN];
@@ -71,7 +76,7 @@ int try_host(int sock, unsigned int ipaddr) {
   // logging
   inet_ntop(AF_INET, &addr.sin_addr.s_addr, ipaddr_str, INET_ADDRSTRLEN);
 #ifdef DEBUG
-  printf("trying %s\n", ipaddr_str);
+  printf("%d: trying %s\n", thrd_id, ipaddr_str);
 #endif
 
   if (sendto(sock, &packet, sizeof(struct icmp_echo), 0,
@@ -91,6 +96,9 @@ void *send_thread(void *args_ptr) {
   struct timeval timeout;
 
   args = (struct sender_args *)args_ptr;
+#ifdef DEBUG
+  printf("%d: started thread\n", args->id);
+#endif
 
   // create the pollfd
   pfd.fd = args->sock;
@@ -135,18 +143,36 @@ void *send_thread(void *args_ptr) {
       perror("poll()");
       return NULL;
     }
-    try_host(args->sock, next_ipaddr);
+    try_host(args->id, args->sock, next_ipaddr);
     next_ipaddr++;
   }
 
   // set a timeout on the socket now that we're done querying
-  printf("finished sending requests\n");
-  timeout.tv_sec = TIMEOUT_SEC;
-  timeout.tv_usec = 0;
-  if (setsockopt(args->sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
-                 sizeof(struct timeval)) < 0) {
-    perror("setsockopt()");
-    // no recovery here, or else we'll never end
+#ifdef DEBUG
+  printf("%d: finished sending requests\n", args->id);
+#endif
+  if ((errno = pthread_mutex_lock(&thrds_working_mutex)) != 0) {
+    perror("pthread_mutex_lock()");
+    exit(1);
+  }
+  thrds_working -= 1;
+
+  if (thrds_working == 0) {
+#ifdef DEBUG
+    printf("all threads finished sending, setting timeout\n");
+#endif
+    timeout.tv_sec = TIMEOUT_SEC;
+    timeout.tv_usec = 0;
+    if (setsockopt(args->sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+                   sizeof(struct timeval)) < 0) {
+      perror("setsockopt()");
+      // no recovery here, or else we'll never end
+      exit(1);
+    }
+  }
+
+  if ((errno = pthread_mutex_unlock(&thrds_working_mutex)) != 0) {
+    perror("pthread_mutex_unlock()");
     exit(1);
   }
   return NULL;
@@ -185,9 +211,8 @@ int write_outfile(const char *filename, struct cidr_block *block,
 
 int main(int argc, char *argv[]) {
   struct cidr_block block;
-  struct sender_args thrd_args;
-  pthread_t send_thrd;
-  size_t ip_bitarr_cap;
+  struct sender_args thrd_args[NUM_THRDS];
+  size_t ip_bitarr_cap, i;
   unsigned char *ip_bitarr;
   unsigned int num_ips;
   int sock;
@@ -215,11 +240,34 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // open a thread to send ping requests while we receive them
-  thrd_args.block = block;
-  thrd_args.sock = sock;
-  if (pthread_create(&send_thrd, NULL, send_thread, &thrd_args))
+  // split the block into subblocks and open a thread for each subblock to send
+  // ping requests while we receive them
+  if ((errno = pthread_mutex_init(&thrds_working_mutex, NULL)) != 0) {
+    perror("pthread_mutex_init()");
+    close(sock);
     return 1;
+  }
+  thrds_working = NUM_THRDS;
+  for (i = 0; i < NUM_THRDS; i++) {
+    struct cidr_block subblock;
+    pthread_t send_thrd;
+
+    subblock.ipaddr = block.ipaddr + i * (block.num_addrs / NUM_THRDS);
+    if (i == NUM_THRDS - 1) {
+      subblock.num_addrs = block.num_addrs - i * (block.num_addrs / NUM_THRDS);
+    } else {
+      subblock.num_addrs = block.num_addrs / NUM_THRDS;
+    }
+
+    thrd_args[i].id = i;
+    thrd_args[i].block = subblock;
+    thrd_args[i].sock = sock;
+    if ((errno = pthread_create(&send_thrd, NULL, send_thread,
+                                &thrd_args[i])) != 0) {
+      perror("pthread_create()");
+      return 1;
+    }
+  }
 
   // allocate a bitarray to keep track of ip addresses
   if (block.num_addrs % 8 == 0)
@@ -227,6 +275,10 @@ int main(int argc, char *argv[]) {
   else
     ip_bitarr_cap = block.num_addrs / 8 + 1;
   ip_bitarr = calloc(1, ip_bitarr_cap);
+  if (ip_bitarr == NULL) {
+    perror("calloc()");
+    return 1;
+  }
 
   // receive all
   num_ips = block.num_addrs;
@@ -274,6 +326,10 @@ int main(int argc, char *argv[]) {
   if (write_outfile(argv[2], &block, ip_bitarr, ip_bitarr_cap))
     return 1;
 
+  if ((errno = pthread_mutex_destroy(&thrds_working_mutex)) != 0) {
+    perror("pthread_mutex_destroy()");
+    return 1;
+  }
   free(ip_bitarr);
   return 0;
 }

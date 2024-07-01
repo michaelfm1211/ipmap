@@ -1,6 +1,6 @@
 PREFIX=/usr/local
 
-CFLAGS = -Wall -Wextra -Werror -pedantic
+CFLAGS = -Wall -Wextra -Werror -pedantic -lpthread
 BINS = ipmap ipmap-query ipmap-viz
 
 all: CFLAGS += -O3
